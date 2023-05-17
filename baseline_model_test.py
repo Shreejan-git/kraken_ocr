@@ -41,3 +41,4 @@ if __name__ == "__main__":
     # pil_image.show()
     baseline_seg = blla.segment(pil_image, model=None, device='cpu')  # Baseline segmenter
     visualize_polylines(cv_image, baseline_seg['lines'])
+
