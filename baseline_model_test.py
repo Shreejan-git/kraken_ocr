@@ -2,7 +2,6 @@ import random
 
 import numpy as np
 from kraken import blla
-from kraken.lib import vgsl
 from PIL import Image, ImageOps
 import cv2
 
@@ -20,7 +19,7 @@ def preprocessing(img):
     #                                          cv2.THRESH_BINARY_INV,
     #                                          21, 11)
 
-    # median_blurred_high = cv2.medianBlur(binarization_high, 3)
+    median_blurred = cv2.medianBlur(gray, 5)
     # median_blurred_low = cv2.medianBlur(binarization_low, 3)
 
     # # Erosion
@@ -35,7 +34,7 @@ def preprocessing(img):
     #
     # cv2.waitKey(0)
 
-    return dilated_img_low
+    return median_blurred
 
 
 def visualize_polylines(img, cv_image, lines):
@@ -54,7 +53,7 @@ def visualize_polylines(img, cv_image, lines):
             g = random.randint(0, 256)
             b = random.randint(0, 256)
             cv_image = cv2.polylines(cv_image, [base_line],
-                                     False, (r, g, b), 10)
+                                     False, (r, g, b), 4)
 
         cv2.namedWindow(f'{img}', cv2.WINDOW_NORMAL)
         cv2.imshow(f'{img}', cv_image)
@@ -62,7 +61,13 @@ def visualize_polylines(img, cv_image, lines):
         cv2.destroyAllWindows()
 
     else:
+        cv2.namedWindow(f'{img}', cv2.WINDOW_NORMAL)
+        cv2.imshow(f'{img}', cv_image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
         print('Could not detect anything')
+
+    return cv_image
 
 
 def draw_polygon(cv_image, lines):
@@ -87,53 +92,49 @@ def draw_polygon(cv_image, lines):
         cv2.destroyAllWindows()
 
     else:
-        print('could not detect anything.')
+        cv2.namedWindow(f'{img}', cv2.WINDOW_NORMAL)
+        cv2.imshow(f'{img}', cv_image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        print('Could not detect anything')
 
 
-def image_preprocessing(img):
+def crop_image(input_image, lines):
     """
-    Image is already in gray format.
+    :param input_image: original input image
+    :param lines: coordinates of detected lines returned by Kraken line segmenter.
+    :return: list containing all the cropped images
     """
-    gray_scale = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    final_cropped_image = []
+    for baseline in lines:
+        base_line = baseline['boundary']
+        base_line = np.array(base_line, np.int32)
+        rect = cv2.boundingRect(base_line)
+        x, y, w, h = rect
+        cropped_image = input_image[y:y + h, x - 20:x + w + 20].copy()  # taking extra 20 pixels on both sides.
 
-    # BLURRING (Doing two layered blurring)
-    diameter = 50
-    sigma_color = 55
-    sigma_space = 50
-    bilateral_blurred = cv2.bilateralFilter(gray_scale, diameter, sigma_color, sigma_space)
-    # median_blurred = cv2.medianBlur(bilateral_blurred, 3)
-    #
-    # # BINARIZATION
-    # binarization_high = cv2.adaptiveThreshold(bilateral_blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-    #                                           cv2.THRESH_BINARY_INV,
-    #                                           23, 11)
+        # cv2.namedWindow('cropped image', cv2.WINDOW_NORMAL)
+        # cv2.imshow('cropped image', cropped_image)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
 
-    binarization_low = cv2.adaptiveThreshold(bilateral_blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                             cv2.THRESH_BINARY_INV,
-                                             21, 11)
+        # pts = base_line - base_line.min(axis=0)
+        #
+        # mask = np.zeros(cropped_image.shape[:2], np.uint8)
+        # cv2.drawContours(mask, [pts], -1, (255, 255, 255), -1, cv2.LINE_AA)
+        #
+        # dst = cv2.bitwise_and(cropped_image, cropped_image, mask=mask)
+        #
+        # bg = np.ones_like(cropped_image, np.uint8) * 255
+        # cv2.bitwise_not(bg, bg, mask=mask)
+        # dst2 = bg + dst
+        # cv2.namedWindow('dst2', cv2.WINDOW_NORMAL)
+        # cv2.imshow('dst2', dst2)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
+        final_cropped_image.append(cropped_image)
 
-    # median_blurred_high = cv2.medianBlur(binarization_high, 3)
-    median_blurred_low = cv2.medianBlur(binarization_low, 3)
-
-    # # Erosion
-    # eroded_img_high = cv2.erode(binarization_high, None)
-    # eroded_img_low = cv2.erode(binarization_low, None)
-
-    # dilated_img_high = cv2.dilate(median_blurred_high, None)
-    dilated_img_low = cv2.dilate(median_blurred_low, None, iterations=2)
-
-    # normalized_img = eroded_img/255.0
-
-    #
-    # cv2.namedWindow('high', cv2.WINDOW_NORMAL)
-    # cv2.imshow('high', dilated_img_high)
-
-    cv2.namedWindow('low', cv2.WINDOW_NORMAL)
-    cv2.imshow('low', dilated_img_low)
-
-    cv2.waitKey(0)
-
-    return dilated_img_low
+    return final_cropped_image
 
 
 if __name__ == "__main__":
@@ -141,7 +142,7 @@ if __name__ == "__main__":
 
     dir_path = '/home/dell/Documents/handwritten_images/testingimages'
 
-    for img in os.listdir(dir_path):
+    for img in sorted(os.listdir(dir_path)):
         image_path = os.path.join(dir_path, img)
         print(image_path)
 
@@ -151,10 +152,22 @@ if __name__ == "__main__":
         # image = Image.open(image_path)
         # image = ImageOps.exif_transpose(image)
         cv_image = cv2.imread(image_path)
+        # he = cv2.equalizeHist(cv_image)
+
         # preprocessed = preprocessing(cv_image)
         pil_image = Image.fromarray(cv_image)  # reading with pil as a requirement of Kraken.
         # pil_image.show()
         baseline_seg = blla.segment(pil_image, model=None, device='cpu')  # Baseline segmenter
-        visualize_polylines(img, cv_image, baseline_seg['lines'])
-        draw_polygon(cv_image, baseline_seg['lines'])
 
+        # visualize_polylines(img, cv_image, baseline_seg['lines'])
+        cropped_images = crop_image(cv_image, baseline_seg['lines'])
+        #
+        # for i in cropped_images:
+        #     print(i)
+        #     # img = cv2.imread(i)
+        #     cv2.namedWindow(f'{img}', cv2.WINDOW_NORMAL)
+        #     cv2.imshow(f'{img}', i)
+        #     cv2.waitKey(0)
+        #     cv2.destroyAllWindows()
+
+        # draw_polygon(cv_image, baseline_seg['lines'])
